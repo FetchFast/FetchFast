@@ -1,0 +1,122 @@
+// ==UserScript==
+// @name         Whatsapp utility
+// @namespace    http://tampermonkey.net/
+// @version      0.1
+// @description  Whatsapp utility
+// @author       jaspreetsinghrawel
+// @match        https://web.whatsapp.com/
+// @grant        none
+// ==/UserScript==
+
+window.addEventListener('load', function() {
+    'use strict';
+
+    function sleep(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    function getElementByXpath(path) {
+        return document.evaluate(path, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
+    }
+
+    function checkFolderName(folder_name) {
+        var pattern = new RegExp(/[~`!#$%\^&*+=\-\[\]\\';,/{}|\\":<>\?]/); //special chars
+        if (pattern.test(folder_name)) {
+            alert("special characters found");
+            return true;
+        }
+        return false; //no special characters found
+    }
+
+    function escapeRegExp(folder_name) {
+        return folder_name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); // $& means the whole matched string
+    }
+
+    function copy(input_text) {
+        let temp = document.createElement('textarea');
+        document.body.appendChild(temp);
+        temp.value = input_text;
+        temp.select();
+        document.execCommand('copy');
+        temp.remove();
+    }
+
+    function createNodeForCopy(node_to_clone, folder_name, text_content) {
+        let commands = ""
+        let cloned_node = node_to_clone.cloneNode(true)
+        cloned_node.getElementsByTagName('span')[0].textContent = text_content
+        node_to_clone.insertAdjacentElement("beforebegin", cloned_node)
+
+        let remove_checkbox = getElementByXpath("//span[contains(text(), '" + text_content + "')]/../../div/input/..")
+        if (remove_checkbox) {
+            remove_checkbox.remove()
+        }
+
+        let ele_a = document.createElement("button")
+        ele_a.textContent = text_content
+        ele_a.onclick = function() {
+            if (text_content.includes("Folder") === false) {
+                commands = `mkdir -p ~/Documents/Clients/` + folder_name + `
+                            touch ~/Documents/Clients/` + folder_name + `/notes.txt
+                            open ~/Documents/Clients/` + folder_name + `/notes.txt`
+            } else {
+                commands = `mkdir -p ~/Documents/Clients/` + folder_name + `
+                            touch ~/Documents/Clients/` + folder_name + `/notes.txt
+                            open ~/Documents/Clients/` + folder_name
+            }
+            copy(commands)
+        };
+
+        let ele_span = getElementByXpath("//span[contains(text(), '" + text_content + "')]")
+        if (ele_span) {
+            ele_span.textContent = ""
+            ele_span.appendChild(ele_a)
+        }
+    }
+
+    async function trigger_link_insert_task() {
+        let group_button;
+        while (true) {
+            while (true) {
+                await sleep(1000);
+                group_button = getElementByXpath("//*[contains(text(), 'Group info') or contains(text(), 'Contact info')]")
+                if (group_button) {
+                    let node_to_clone = getElementByXpath("//span[contains(text(), 'Mute')]/../../..")
+                    if (node_to_clone) {
+                        let folder_name = ""
+                        let phone_number = getElementByXpath("//span[contains(text(), 'About and phone number')]/../..//span[@dir='auto']/span")
+                        if (phone_number !== null) {
+                            folder_name = phone_number.textContent
+                        } else {
+                            let group_name = getElementByXpath("//header/div/div/div/span[@dir='auto']")
+                            folder_name = group_name.textContent
+                        }
+
+                        folder_name = escapeRegExp(folder_name)
+
+                        let reg = /\s/g
+                        folder_name = folder_name.replace(reg, '\\ ');
+
+                        createNodeForCopy(node_to_clone, folder_name, "Open Notes")
+                        createNodeForCopy(node_to_clone, folder_name, "Open Containing Folder")
+
+                        break
+                    }
+                }
+            }
+            await sleep(1000);
+            while (true) {
+                await sleep(1000);
+                group_button = getElementByXpath("//*[contains(text(), 'Group info') or contains(text(), 'Contact info')]")
+                if (!group_button) {
+                    console.log("breaks out of loop")
+                    break
+                }
+            }
+        }
+
+    }
+
+    trigger_link_insert_task();
+
+});
